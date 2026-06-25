@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+clientiq.db
+backend/clientiq.db
+uploads/
+generated/
+backend/uploads/
+backend/generated/
+
