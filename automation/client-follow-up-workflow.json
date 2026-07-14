@@ -1,0 +1,53 @@
+{
+  "name": "ClientIQ - Client Follow-up",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clientiq-follow-up",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "clientiq-webhook",
+      "name": "Receive ClientIQ Insights",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "clientiq-follow-up"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json.body || $json;\n\nreturn [{\n  json: {\n    status: 'follow-up prepared',\n    clientName: data.clientName,\n    clientEmail: data.clientEmail,\n    nextAction: data.nextAction,\n    message: `Follow up with ${data.clientName}: ${data.nextAction}`\n  }\n}];"
+      },
+      "id": "prepare-follow-up",
+      "name": "Prepare Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-to-clientiq",
+      "name": "Confirm Automation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [740, 300]
+    }
+  ],
+  "connections": {
+    "Receive ClientIQ Insights": {
+      "main": [[{ "node": "Prepare Follow-up", "type": "main", "index": 0 }]]
+    },
+    "Prepare Follow-up": {
+      "main": [[{ "node": "Confirm Automation", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "clientiq-interview-demo"
+}

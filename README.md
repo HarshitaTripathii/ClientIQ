@@ -1,55 +1,51 @@
-# ClientIQ: AI-Powered Client Intelligence & Proposal Automation System
+# ClientIQ
 
-ClientIQ is a beginner-friendly full-stack project where a user creates a client project, uploads meeting notes and business data, generates insights, creates a Word proposal and PowerPoint deck, and optionally triggers an n8n webhook.
+ClientIQ is a small React and Express application that turns meeting notes into useful client insights and sends the approved result to an n8n workflow.
 
-## Tech Stack
+The project is intentionally easy to run and explain. Its main focus is reusable React components, frontend states, REST API integration, and one clear workflow automation.
 
-- Frontend: React, Vite, Tailwind CSS, Axios
-- Backend: Python, FastAPI, SQLAlchemy, SQLite
-- Data processing: Pandas, OpenPyXL
-- AI: OpenAI API if `OPENAI_API_KEY` is available, otherwise a local rule-based fallback
-- Documents: python-docx and python-pptx
-- Automation: n8n webhook through a normal HTTP request
-
-## Folder Structure
+## Demo flow
 
 ```text
-ClientIq/
-  backend/
-    app/
-      main.py
-      database.py
-      models.py
-      schemas.py
-      services/
-    generated/
-    uploads/
-    requirements.txt
-    .env.example
-  frontend/
-    src/
-      components/
-      App.jsx
-      api.js
-    package.json
+Select a client
+  → Add meeting notes
+  → Generate insights
+  → Review or edit the result
+  → Send the result to n8n
 ```
 
-## Run Backend
+## Main features
+
+- Responsive React dashboard
+- Searchable client list
+- Meeting-notes editor
+- Editable insight sections
+- Loading, empty, success, and error states
+- Express REST API
+- Optional free Groq AI integration
+- Offline demo insight generator
+- Importable n8n follow-up workflow
+
+## Tech stack
+
+- React, Vite, Axios, Lucide React
+- Node.js and ExpressJS
+- JSON file persistence using Node's filesystem API
+- Groq's OpenAI-compatible API with the `openai/gpt-oss-20b` model
+- n8n community edition
+
+## Run the project
+
+Open the first terminal:
 
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 copy .env.example .env
-uvicorn app.main:app --reload --port 8000
+npm run dev
 ```
 
-Backend URL: `http://localhost:8000`
-
-API docs: `http://localhost:8000/docs`
-
-## Run Frontend
+Open a second terminal:
 
 ```bash
 cd frontend
@@ -57,25 +53,83 @@ npm install
 npm run dev
 ```
 
-Frontend URL: `http://localhost:5173`
+Open `http://localhost:5173`.
 
-## Optional AI Setup
+No API key is required. Without a key, ClientIQ uses the built-in demo generator so every feature can still be shown.
 
-Add your key in `backend/.env`:
+## Optional free AI setup
 
-```text
-OPENAI_API_KEY=your_key_here
+Create a free Groq API key and add it to `backend/.env`:
+
+```env
+GROQ_API_KEY=your_key
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-If no key is provided, the project still works using simple generated insights from the uploaded notes and data.
+The API key stays in the Express backend and is never exposed to React.
 
-## Optional n8n Setup
+## n8n workflow setup
 
-Create an n8n workflow with a Webhook node, then paste the production/test webhook URL in `backend/.env`:
+1. Run n8n community edition locally.
+2. Import `automation/client-follow-up-workflow.json`.
+3. Open the imported workflow and select **Receive ClientIQ Insights**.
+4. Copy its test or production webhook URL.
+5. Add the URL to `backend/.env`:
 
-```text
-N8N_WEBHOOK_URL=https://your-n8n-url/webhook/clientiq
+```env
+N8N_WEBHOOK_URL=http://localhost:5678/webhook-test/clientiq-follow-up
 ```
 
-When documents are generated, click **Trigger n8n Follow-up** from the frontend.
+6. Start listening in n8n and click **Send to n8n** in ClientIQ.
 
+The workflow receives the client details and approved insights, prepares a follow-up message, and returns a confirmation to Express. You can later add Gmail or Slack after the **Prepare Follow-up** node without changing the application.
+
+## Project structure
+
+```text
+ClientIQ/
+  automation/
+    client-follow-up-workflow.json
+  frontend/src/
+    components/
+    App.jsx
+    api.js
+    styles.css
+  backend/src/
+    controllers/
+    db/
+    middleware/
+    routes/
+    services/
+    app.js
+    server.js
+```
+
+The Express request flow is deliberately simple:
+
+```text
+Route → Controller → Service or Repository → JSON response
+```
+
+## API endpoints
+
+```text
+GET  /api/health
+GET  /api/clients
+POST /api/clients
+GET  /api/clients/:id
+PUT  /api/clients/:id
+POST /api/clients/:id/generate-insights
+PUT  /api/clients/:id/insights
+POST /api/clients/:id/trigger-automation
+```
+
+## Interview explanation
+
+> ClientIQ is a React and Express client follow-up dashboard. I divided the interface into reusable components for navigation, clients, notes, insights, automation, modals, and notifications. React manages the form and UI states and communicates with Express through Axios. Express stores demo data, optionally generates insights through Groq, and sends approved results to an n8n webhook. I also included an offline generator so the application remains reliable during a demonstration.
+
+## Three files to show first
+
+- `frontend/src/App.jsx` — application state and API calls
+- `backend/src/controllers/clientController.js` — Express request handling
+- `automation/client-follow-up-workflow.json` — the n8n automation

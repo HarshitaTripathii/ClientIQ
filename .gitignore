@@ -6,6 +6,7 @@ __pycache__/
 .env
 clientiq.db
 backend/clientiq.db
+backend/data/
 uploads/
 generated/
 backend/uploads/
