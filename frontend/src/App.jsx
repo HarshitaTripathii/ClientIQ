@@ -1,194 +1,210 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Sparkles } from "lucide-react";
 import api from "./api";
-import AnalysisSummary from "./components/AnalysisSummary";
-import DocumentActions from "./components/DocumentActions";
-import InsightsEditor from "./components/InsightsEditor";
-import ProjectForm from "./components/ProjectForm";
+import ClientFormModal from "./components/ClientFormModal";
+import ClientList from "./components/ClientList";
+import EmptyWorkspace from "./components/EmptyWorkspace";
+import InsightsPanel from "./components/InsightsPanel";
+import NotesPanel from "./components/NotesPanel";
 import Sidebar from "./components/Sidebar";
-import StepBar from "./components/StepBar";
-import UploadPanel from "./components/UploadPanel";
+import Toast from "./components/Toast";
 
-const emptyForm = {
-  client_name: "FreshMart",
-  industry: "Retail",
-  business_goal: "Improve customer retention using customer data and meeting notes",
-  project_type: "Customer analytics proposal",
-  user_email: "consultant@example.com",
-};
+function getErrorMessage(error) {
+  return error.response?.data?.message || "Something went wrong. Please try again.";
+}
 
 function App() {
-  const [formData, setFormData] = useState(emptyForm);
-  const [project, setProject] = useState(null);
-  const [analysis, setAnalysis] = useState({});
-  const [insights, setInsights] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("Create a project to begin.");
-  const [currentStep, setCurrentStep] = useState(1);
+  const [clients, setClients] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeAction, setActiveAction] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [toast, setToast] = useState(null);
 
-  async function createProject(event) {
-    event.preventDefault();
-    setLoading(true);
+  const selectedClient = clients.find((client) => client.id === selectedId) || null;
+  const filteredClients = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return clients;
+    return clients.filter((client) =>
+      `${client.name} ${client.industry}`.toLowerCase().includes(query),
+    );
+  }, [clients, search]);
+
+  useEffect(() => {
+    async function loadClients() {
+      try {
+        const response = await api.get("/clients");
+        setClients(response.data);
+        setSelectedId(response.data[0]?.id ?? null);
+      } catch (error) {
+        setToast({ type: "error", message: getErrorMessage(error) });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadClients();
+  }, []);
+
+  function replaceClient(updatedClient) {
+    setClients((currentClients) =>
+      currentClients.map((client) => (client.id === updatedClient.id ? updatedClient : client)),
+    );
+  }
+
+  async function createClient(formData) {
+    setActiveAction("create");
     try {
-      const response = await api.post("/projects", formData);
-      setProject(response.data);
-      setCurrentStep(2);
-      setMessage("Project created. Now upload notes and data.");
+      const response = await api.post("/clients", formData);
+      setClients((currentClients) => [response.data, ...currentClients]);
+      setSelectedId(response.data.id);
+      setIsModalOpen(false);
+      setToast({ type: "success", message: `${response.data.name} was added.` });
     } catch (error) {
-      setMessage(error.response?.data?.detail || "Project could not be created.");
+      setToast({ type: "error", message: getErrorMessage(error) });
     } finally {
-      setLoading(false);
+      setActiveAction("");
     }
   }
 
-  async function uploadFile(file, endpoint) {
-    if (!project) {
-      setMessage("Please create a project first.");
-      return;
-    }
-    if (!file) return;
-
-    const form = new FormData();
-    form.append("file", file);
-
+  async function saveNotes(meetingNotes) {
+    setActiveAction("notes");
     try {
-      const response = await api.post(`/projects/${project.id}/${endpoint}`, form);
-      setProject(response.data);
-      setCurrentStep(2);
-      setMessage("File uploaded successfully.");
+      const response = await api.put(`/clients/${selectedId}`, { meetingNotes });
+      replaceClient(response.data);
+      setToast({ type: "success", message: "Meeting notes saved." });
     } catch (error) {
-      setMessage(error.response?.data?.detail || "Upload failed.");
-    }
-  }
-
-  async function analyzeProject() {
-    if (!project) {
-      setMessage("Please create a project first.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await api.post(`/projects/${project.id}/analyze`);
-      setAnalysis(response.data.analysis);
-      setInsights(response.data.insights);
-      setCurrentStep(3);
-      setMessage("Analysis and insights generated.");
-    } catch (error) {
-      setMessage(error.response?.data?.detail || "Analysis failed.");
+      setToast({ type: "error", message: getErrorMessage(error) });
     } finally {
-      setLoading(false);
+      setActiveAction("");
     }
   }
 
-  async function saveInsights() {
-    if (!project) return;
-
+  async function generateInsights(meetingNotes) {
+    setActiveAction("generate");
     try {
-      const response = await api.put(`/projects/${project.id}/insights`, { insights });
-      setProject(response.data);
-      setMessage("Insight edits saved.");
+      await api.put(`/clients/${selectedId}`, { meetingNotes });
+      const response = await api.post(`/clients/${selectedId}/generate-insights`);
+      replaceClient(response.data.client);
+      const sourceMessage = response.data.source === "groq" ? "AI insights generated with Groq." : "Demo insights generated locally.";
+      setToast({ type: "success", message: sourceMessage });
     } catch (error) {
-      setMessage(error.response?.data?.detail || "Could not save insights.");
+      setToast({ type: "error", message: getErrorMessage(error) });
+    } finally {
+      setActiveAction("");
     }
   }
 
-  async function refreshProject(response) {
-    setProject(response.data);
-  }
-
-  async function generateProposal() {
-    if (!project) return;
+  async function saveInsights(insights) {
+    setActiveAction("insights");
     try {
-      const response = await api.post(`/projects/${project.id}/generate-proposal`);
-      refreshProject(response);
-      setCurrentStep(4);
-      setMessage("Word proposal generated.");
+      const response = await api.put(`/clients/${selectedId}/insights`, { insights });
+      replaceClient(response.data);
+      setToast({ type: "success", message: "Insight edits saved." });
     } catch (error) {
-      setMessage(error.response?.data?.detail || "Proposal generation failed.");
-    }
-  }
-
-  async function generatePpt() {
-    if (!project) return;
-    try {
-      const response = await api.post(`/projects/${project.id}/generate-ppt`);
-      refreshProject(response);
-      setCurrentStep(4);
-      setMessage("PowerPoint deck generated.");
-    } catch (error) {
-      setMessage(error.response?.data?.detail || "PowerPoint generation failed.");
+      setToast({ type: "error", message: getErrorMessage(error) });
+    } finally {
+      setActiveAction("");
     }
   }
 
   async function triggerAutomation() {
-    if (!project) return;
+    setActiveAction("automation");
     try {
-      const response = await api.post(`/projects/${project.id}/trigger-automation`);
-      refreshProject(response);
-      setCurrentStep(5);
-      setMessage(response.data.automation_status);
+      const response = await api.post(`/clients/${selectedId}/trigger-automation`);
+      replaceClient(response.data);
+      setToast({ type: "success", message: response.data.automationStatus });
     } catch (error) {
-      setMessage(error.response?.data?.detail || "Automation trigger failed.");
+      setToast({ type: "error", message: getErrorMessage(error) });
+    } finally {
+      setActiveAction("");
     }
   }
 
   return (
-    <div className="min-h-screen lg:flex">
-      <Sidebar />
+    <div className="app-shell">
+      <Sidebar clientCount={clients.length} />
 
-      <main className="flex-1">
-        <div className="border-b bg-white px-5 py-4 lg:hidden">
-          <div className="text-2xl font-bold">
-            Client<span className="text-teal-600">IQ</span>
+      <main className="main-area">
+        <header className="page-header">
+          <div>
+            <p className="mobile-brand">Client<span>IQ</span></p>
+            <h1>Client workspace</h1>
+            <p>Capture notes, generate useful insights, and automate the next follow-up.</p>
           </div>
-        </div>
+          <button className="button button-primary" onClick={() => setIsModalOpen(true)}>
+            <Plus size={18} /> Add client
+          </button>
+        </header>
 
-        <StepBar currentStep={currentStep} />
+        <div className="workspace">
+          <ClientList
+            clients={filteredClients}
+            selectedId={selectedId}
+            search={search}
+            isLoading={isLoading}
+            onSearch={setSearch}
+            onSelect={setSelectedId}
+          />
 
-        <div className="bg-slate-50 p-5">
-          <div className="mb-4 rounded-md border bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-bold">Client Intelligence Workspace</h1>
-                <p className="mt-1 text-sm text-slate-500">{message}</p>
-              </div>
-              <button
-                onClick={analyzeProject}
-                disabled={loading || !project}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {loading ? "Working..." : "Analyze Inputs"}
-              </button>
-            </div>
-          </div>
+          <section className="client-workspace">
+            {selectedClient ? (
+              <>
+                <div className="client-heading">
+                  <div className="client-avatar">{selectedClient.name.slice(0, 2).toUpperCase()}</div>
+                  <div>
+                    <div className="client-title-row">
+                      <h2>{selectedClient.name}</h2>
+                      <span className={`status-dot ${selectedClient.status.toLowerCase()}`}>{selectedClient.status}</span>
+                    </div>
+                    <p>{selectedClient.industry} · {selectedClient.email || "No email added"}</p>
+                  </div>
+                </div>
 
-          <div className="overflow-hidden rounded-md border bg-white">
-            <div className="grid lg:grid-cols-[360px_1fr]">
-              <ProjectForm
-                formData={formData}
-                setFormData={setFormData}
-                onCreateProject={createProject}
-                loading={loading}
-              />
-              <div>
-                <UploadPanel
-                  project={project}
-                  onUploadNotes={(event) => uploadFile(event.target.files[0], "upload-notes")}
-                  onUploadData={(event) => uploadFile(event.target.files[0], "upload-data")}
+                <NotesPanel
+                  key={`notes-${selectedClient.id}`}
+                  client={selectedClient}
+                  isSaving={activeAction === "notes"}
+                  isGenerating={activeAction === "generate"}
+                  onSave={saveNotes}
+                  onGenerate={generateInsights}
                 />
-                <AnalysisSummary analysis={analysis} />
-                <InsightsEditor insights={insights} setInsights={setInsights} onSaveInsights={saveInsights} />
-                <DocumentActions
-                  project={project}
-                  onGenerateProposal={generateProposal}
-                  onGeneratePpt={generatePpt}
-                  onTriggerAutomation={triggerAutomation}
-                />
-              </div>
-            </div>
-          </div>
+
+                {selectedClient.insights ? (
+                  <InsightsPanel
+                    key={`insights-${selectedClient.id}`}
+                    client={selectedClient}
+                    isSaving={activeAction === "insights"}
+                    isAutomating={activeAction === "automation"}
+                    onSave={saveInsights}
+                    onAutomate={triggerAutomation}
+                  />
+                ) : (
+                  <div className="insights-empty">
+                    <span><Sparkles size={20} /></span>
+                    <div>
+                      <h3>Your AI insights will appear here</h3>
+                      <p>Add useful meeting notes, then generate a summary and clear next steps.</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <EmptyWorkspace onAddClient={() => setIsModalOpen(true)} />
+            )}
+          </section>
         </div>
       </main>
+
+      {isModalOpen ? (
+        <ClientFormModal
+          isSubmitting={activeAction === "create"}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={createClient}
+        />
+      ) : null}
+      {toast ? <Toast toast={toast} onClose={() => setToast(null)} /> : null}
     </div>
   );
 }
